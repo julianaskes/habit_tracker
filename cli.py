@@ -37,7 +37,7 @@ class HabitTrackerCLI:
             return
 
         habit.complete(completion_date)
-        self.storage.save()
+        self.storage.add_habit(habit)
         print(f"Habit '{name}' marked as completed for {completion_date}")
 
     def remove_habit(self, name):

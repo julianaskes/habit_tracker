@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 
 class Habit:
@@ -21,18 +21,27 @@ class Habit:
             self.streak = 0
             return
 
-        sorted_dates = sorted(self.completed_dates)
+        if self.period == "weekly":
+            # Collapse completions to one entry per calendar week (Monday-aligned)
+            # so multiple completions in the same week don't inflate the streak.
+            dates = sorted({d - timedelta(days=d.weekday()) for d in self.completed_dates})
+            step = 7
+        else:
+            dates = sorted(self.completed_dates)
+            step = 1
+
         current_streak = 1
-        for i in range(len(sorted_dates) - 1):
-            date_diff = (sorted_dates[i + 1] - sorted_dates[i]).days
-            if (self.period == "daily" and date_diff == 1) or \
-               (self.period == "weekly" and date_diff <= 7):
+        longest_in_history = 1
+        for i in range(len(dates) - 1):
+            date_diff = (dates[i + 1] - dates[i]).days
+            if date_diff == step:
                 current_streak += 1
             else:
                 current_streak = 1
+            longest_in_history = max(longest_in_history, current_streak)
 
         self.streak = current_streak
-        self.longest_streak = max(self.longest_streak, current_streak)
+        self.longest_streak = max(self.longest_streak, longest_in_history)
 
     def __repr__(self):
         return f"Habit(name='{self.name}', period='{self.period}', streak={self.streak})"

@@ -6,10 +6,12 @@ from habit import Habit
 class Storage:
     def __init__(self, db_file="habits.db"):
         self.db_file = db_file
+        self.conn = sqlite3.connect(self.db_file)
+        self.conn.execute('PRAGMA foreign_keys = ON')
         self.init_db()
 
     def get_connection(self):
-        return sqlite3.connect(self.db_file)
+        return self.conn
 
     def init_db(self):
         with self.get_connection() as conn:
