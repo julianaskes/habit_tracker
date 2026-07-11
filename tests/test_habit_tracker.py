@@ -1,6 +1,9 @@
 import unittest
 from datetime import datetime, date, timedelta
 import os
+import sys
+import subprocess
+import tempfile
 from habit import Habit
 from storage import Storage
 from analytics import get_habit_stats, get_completion_rate
@@ -76,13 +79,14 @@ class TestHabitTracker(unittest.TestCase):
         self.storage.add_habit(habit)
 
         today = date.today()
-        # Complete habit for 15 out of last 30 days
-        for i in range(0, 30, 2):  # Every other day
+        # Complete every other day; the earliest is 28 days ago, so the habit
+        # is measured over its 29-day tracked span (not the full 30-day window).
+        for i in range(0, 30, 2):
             habit.complete(today - timedelta(days=i))
         self.storage.add_habit(habit)
 
         completion_rate = get_completion_rate(habit)
-        self.assertEqual(completion_rate, 50.0)
+        self.assertAlmostEqual(completion_rate, 15 / 29 * 100, places=5)
 
     def test_remove_habit(self):
         habit = Habit("Exercise", "daily")
@@ -165,17 +169,86 @@ class TestHabitTracker(unittest.TestCase):
 
         self.assertEqual(get_completion_rate(habit), 100.0)
 
-    def test_weekly_completion_rate_counts_distinct_weeks(self):
-        # Five completions in a single week count as one week, not five.
-        habit = Habit("Weekly Review", "weekly")
+    def test_weekly_rate_ignores_duplicate_weeks(self):
+        # A second completion in the same week must not change the rate.
+        created = datetime.now() - timedelta(days=90)
         today = date.today()
         monday = today - timedelta(days=today.weekday())
-        for i in range(5):  # Mon..Fri of the current week
-            habit.complete(monday + timedelta(days=i))
 
-        rate = get_completion_rate(habit)
-        self.assertLessEqual(rate, 100.0)
-        self.assertEqual(rate, (1 / (30 // 7)) * 100)
+        once = Habit("Once", "weekly", created_at=created)
+        once.complete(monday)
+
+        twice = Habit("Twice", "weekly", created_at=created)
+        twice.complete(monday)
+        twice.complete(today)  # same (current) week as monday
+
+        self.assertEqual(get_completion_rate(once), get_completion_rate(twice))
+
+    def test_new_habit_not_penalized_for_time_before_creation(self):
+        # Created and completed today: fully done for its entire lifetime.
+        habit = Habit("Fresh", "daily")
+        habit.complete(date.today())
+
+        self.assertEqual(get_completion_rate(habit), 100.0)
+
+    def test_uncomplete_removes_completion_and_recomputes(self):
+        habit = Habit("Exercise", "daily")
+        today = date.today()
+        habit.complete(today)
+        habit.complete(today - timedelta(days=1))
+        self.assertEqual(habit.streak, 2)
+
+        self.assertTrue(habit.uncomplete(today))
+        self.assertEqual(len(habit.completed_dates), 1)
+        self.assertEqual(habit.streak, 1)
+
+        # Removing a date that was never completed is a no-op returning False.
+        self.assertFalse(habit.uncomplete(today - timedelta(days=10)))
+
+    def test_uncomplete_reduces_longest_streak(self):
+        # Correcting a mistaken completion should also correct the longest streak.
+        habit = Habit("Exercise", "daily")
+        today = date.today()
+        habit.complete(today)
+        habit.complete(today - timedelta(days=1))
+        self.assertEqual(habit.longest_streak, 2)
+
+        habit.uncomplete(today - timedelta(days=1))
+        self.assertEqual(habit.longest_streak, 1)
+
+    def test_uncomplete_persists_through_storage(self):
+        habit = Habit("Exercise", "daily")
+        today = date.today()
+        habit.complete(today)
+        self.storage.add_habit(habit)
+
+        habit.uncomplete(today)
+        self.storage.add_habit(habit)
+
+        saved = self.storage.get_habit("Exercise")
+        self.assertEqual(len(saved.completed_dates), 0)
+
+
+class TestCLI(unittest.TestCase):
+    """End-to-end checks that the CLI reports failure via exit code + stderr."""
+
+    def _run(self, *args, cwd):
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return subprocess.run(
+            [sys.executable, os.path.join(repo, "cli.py"), *args],
+            cwd=cwd, capture_output=True, text=True)
+
+    def test_success_exits_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self._run("add", "Exercise", cwd=tmp)
+            self.assertEqual(result.returncode, 0)
+
+    def test_error_exits_nonzero_on_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self._run("complete", "Nonexistent", cwd=tmp)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("not found", result.stderr)
+            self.assertEqual(result.stdout, "")
 
 
 if __name__ == '__main__':

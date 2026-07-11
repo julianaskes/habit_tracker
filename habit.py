@@ -16,6 +16,15 @@ class Habit:
             self.completed_dates.append(completion_date)
             self._calculate_streak()
 
+    def uncomplete(self, completion_date=None):
+        """Remove a logged completion. Returns True if one was removed."""
+        completion_date = completion_date or date.today()
+        if completion_date in self.completed_dates:
+            self.completed_dates.remove(completion_date)
+            self._calculate_streak()
+            return True
+        return False
+
     def recalculate_streaks(self):
         """Recompute current/longest streak from completed_dates as of today.
 
@@ -28,6 +37,7 @@ class Habit:
     def _calculate_streak(self):
         if not self.completed_dates:
             self.streak = 0
+            self.longest_streak = 0
             return
 
         today = date.today()
@@ -59,7 +69,9 @@ class Habit:
         # has lapsed and the current streak is zero.
         gap = (reference - dates[-1]).days
         self.streak = current_streak if gap <= step else 0
-        self.longest_streak = max(self.longest_streak, longest_in_history)
+        # Derived purely from the full completion history, so it stays accurate
+        # even when a completion is removed via uncomplete().
+        self.longest_streak = longest_in_history
 
     def __repr__(self):
         return f"Habit(name='{self.name}', period='{self.period}', streak={self.streak})"

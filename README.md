@@ -48,6 +48,23 @@ Example with specific date:
 python cli.py complete "Exercise" --date 2025-10-07
 ```
 
+### Undoing a Completion
+
+```bash
+python cli.py uncomplete "Exercise"
+```
+
+Removes a logged completion (today by default). Use `--date YYYY-MM-DD` to
+remove a specific one. Streaks are recalculated automatically.
+
+### Showing a Single Habit
+
+```bash
+python cli.py show "Exercise"
+```
+
+Prints one habit's stats plus its full completion history.
+
 ### Listing All Habits and Their Statistics
 
 ```bash

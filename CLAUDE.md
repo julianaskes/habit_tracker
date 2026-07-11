@@ -12,9 +12,14 @@ Run the CLI (from repo root):
 ```bash
 python cli.py add "Exercise" --period daily
 python cli.py complete "Exercise" --date 2025-10-07
+python cli.py uncomplete "Exercise" --date 2025-10-07   # remove a logged completion
+python cli.py show "Exercise"                            # one habit + completion history
 python cli.py list
 python cli.py remove "Exercise"
 ```
+
+Commands exit non-zero and write errors to stderr on failure (e.g. unknown
+habit, bad date), so they compose in scripts; success messages go to stdout.
 
 Run tests:
 ```bash
@@ -32,9 +37,9 @@ python tests/generate_test_data.py         # writes to test_habits.db, 4 weeks o
 
 Four modules, each with a single responsibility:
 
-- `habit.py` — `Habit` is a plain in-memory model (name, period, completed_dates, streak, longest_streak). `complete()` appends a date and recalculates streaks via `_calculate_streak()`. Streak math differs by period: `daily` habits require consecutive calendar days (step=1); `weekly` habits collapse completions to their Monday-aligned week before checking for consecutive weeks (step=7), so multiple completions in the same week don't inflate the streak.
-- `storage.py` — `Storage` owns the SQLite connection and schema (`habits` + `completions` tables, FK cascade on delete). `add_habit()` does a full replace: upserts the habit row, then deletes and re-inserts all completions for that habit. There's no incremental completion insert — the whole `Habit` object (with its full `completed_dates` list) is round-tripped through storage on every save. Defaults to `habits.db` in the working directory; tests use `Storage(":memory:")`.
-- `analytics.py` — pure functions operating on a `Habit` (or list of `Habit`s) to produce stats dicts. `get_completion_rate()` compares actual completions in the last N days against an expected count (`days` for daily, `days // 7` for weekly).
-- `cli.py` — `HabitTrackerCLI` wraps a `Storage` instance and adapts `argparse` subcommands (`add`, `complete`, `remove`, `list`) to storage/analytics calls. Note the read-modify-write pattern in `complete_habit()`: it fetches the habit from storage, mutates it in memory, then calls `storage.add_habit()` again to persist (see `add_habit`'s full-replace behavior above).
+- `habit.py` — `Habit` is a plain in-memory model (name, period, completed_dates, streak, longest_streak). `complete()`/`uncomplete()` add/remove a date and recompute via `_calculate_streak()`. Streak math differs by period: `daily` habits require consecutive calendar days (step=1); `weekly` habits collapse completions to their Monday-aligned week before checking consecutive weeks (step=7). The **current streak lapses**: it only counts if the most recent completion is within one step of today/this week (a grace period), else it's 0 — so it depends on `date.today()`. `longest_streak` is derived purely from the full history (so `uncomplete` can lower it). Storage read paths call the public `recalculate_streaks()` after loading so reads reflect today.
+- `storage.py` — `Storage` owns the SQLite connection and schema (`habits` + `completions` tables, FK cascade on delete). `add_habit()` does a full replace: upserts the habit row, then deletes and re-inserts all completions (via `executemany`). The whole `Habit` object is round-tripped on every save. `get_all_habits()` avoids the N+1 pattern by batch-loading all completions in one query. The persisted `streak`/`longest_streak` columns are effectively a cache — reads always recompute. Defaults to `habits.db`; tests use `Storage(":memory:")`.
+- `analytics.py` — pure functions producing stats dicts. `get_completion_rate()` measures completions against the habit's **tracked span** (from `created_at`, or its first completion if earlier) intersected with the last N days, so new habits aren't judged against days they didn't exist; weekly counts distinct Monday-weeks, and the rate is clamped to 100%.
+- `cli.py` — `HabitTrackerCLI` wraps a `Storage` and adapts `argparse` subcommands (`add`, `complete`, `uncomplete`, `remove`, `show`, `list`) to storage/analytics calls. Each command method returns a bool; `main()` maps that to the process exit code, and errors print to stderr via `_error()`. Note the read-modify-write pattern: fetch the habit, mutate in memory, `storage.add_habit()` to persist (see `add_habit`'s full-replace behavior above).
 
 Data flows one direction per command: CLI parses args → loads/creates a `Habit` → mutates it → persists the whole object back via `Storage`. There's no in-process caching between commands; each CLI invocation is a fresh process with its own SQLite connection.
