@@ -109,6 +109,56 @@ class TestHabitTracker(unittest.TestCase):
         saved_habit = self.storage.get_habit("Exercise")
         self.assertEqual(saved_habit.longest_streak, 5)
 
+    def test_streak_grace_period(self):
+        # A run ending yesterday is still "current" (not yet broken today).
+        habit = Habit("Exercise", "daily")
+        today = date.today()
+        habit.complete(today - timedelta(days=1))
+        habit.complete(today - timedelta(days=2))
+
+        self.assertEqual(habit.streak, 2)
+
+    def test_streak_lapses_when_stale(self):
+        # A completed run entirely in the past no longer counts as current,
+        # but it is still reflected in the longest streak.
+        habit = Habit("Exercise", "daily")
+        today = date.today()
+        for i in range(5, 8):  # three consecutive days, a week ago
+            habit.complete(today - timedelta(days=i))
+
+        self.assertEqual(habit.streak, 0)
+        self.assertEqual(habit.longest_streak, 3)
+
+    def test_weekly_streak_lapses_when_stale(self):
+        habit = Habit("Weekly Review", "weekly")
+        today = date.today()
+        habit.complete(today - timedelta(weeks=3))
+        habit.complete(today - timedelta(weeks=4))
+
+        self.assertEqual(habit.streak, 0)
+        self.assertEqual(habit.longest_streak, 2)
+
+    def test_daily_completion_rate_capped_at_100(self):
+        # 31 completions fit the inclusive 30-day window; rate must not exceed 100%.
+        habit = Habit("Exercise", "daily")
+        today = date.today()
+        for i in range(31):
+            habit.complete(today - timedelta(days=i))
+
+        self.assertEqual(get_completion_rate(habit), 100.0)
+
+    def test_weekly_completion_rate_counts_distinct_weeks(self):
+        # Five completions in a single week count as one week, not five.
+        habit = Habit("Weekly Review", "weekly")
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        for i in range(5):  # Mon..Fri of the current week
+            habit.complete(monday + timedelta(days=i))
+
+        rate = get_completion_rate(habit)
+        self.assertLessEqual(rate, 100.0)
+        self.assertEqual(rate, (1 / (30 // 7)) * 100)
+
 
 if __name__ == '__main__':
     unittest.main()

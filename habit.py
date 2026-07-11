@@ -21,14 +21,17 @@ class Habit:
             self.streak = 0
             return
 
+        today = date.today()
         if self.period == "weekly":
             # Collapse completions to one entry per calendar week (Monday-aligned)
             # so multiple completions in the same week don't inflate the streak.
             dates = sorted({d - timedelta(days=d.weekday()) for d in self.completed_dates})
             step = 7
+            reference = today - timedelta(days=today.weekday())
         else:
-            dates = sorted(self.completed_dates)
+            dates = sorted(set(self.completed_dates))
             step = 1
+            reference = today
 
         current_streak = 1
         longest_in_history = 1
@@ -40,7 +43,13 @@ class Habit:
                 current_streak = 1
             longest_in_history = max(longest_in_history, current_streak)
 
-        self.streak = current_streak
+        # The run above ends at the most recent completion. It only counts as
+        # the *current* streak if that completion is still alive: today/this
+        # week (gap 0) or one step ago (grace period so an as-yet-undone today
+        # doesn't read as broken). If the last completion is older, the streak
+        # has lapsed and the current streak is zero.
+        gap = (reference - dates[-1]).days
+        self.streak = current_streak if gap <= step else 0
         self.longest_streak = max(self.longest_streak, longest_in_history)
 
     def __repr__(self):

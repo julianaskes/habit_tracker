@@ -22,12 +22,21 @@ def get_completion_rate(habit, days=30):
     end_date = date.today()
     start_date = end_date - timedelta(days=days)
 
-    completed_in_period = sum(
-        1 for d in habit.completed_dates
-        if start_date <= d <= end_date
-    )
+    in_window = [d for d in habit.completed_dates if start_date <= d <= end_date]
 
-    expected_completions = days if habit.period == "daily" else (days // 7)
+    if habit.period == "weekly":
+        # Count distinct Monday-aligned weeks so multiple completions in the
+        # same week don't inflate the rate (mirrors the streak logic).
+        completed_units = len({d - timedelta(days=d.weekday()) for d in in_window})
+        expected_completions = days // 7
+    else:
+        completed_units = len(in_window)  # daily completions are unique per day
+        expected_completions = days
+
     if expected_completions <= 0:
         return 0.0
-    return (completed_in_period / expected_completions) * 100
+
+    # The window spans days+1 inclusive calendar days, so a fully-completed
+    # period can exceed the nominal expectation; clamp to a sane 100%.
+    rate = (completed_units / expected_completions) * 100
+    return min(rate, 100.0)
