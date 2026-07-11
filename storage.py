@@ -52,11 +52,10 @@ class Storage:
             # Clear and re-insert completions
             cursor.execute(
                 'DELETE FROM completions WHERE habit_name = ?', (habit.name,))
-            for completion_date in habit.completed_dates:
-                cursor.execute('''
-                    INSERT INTO completions (habit_name, completion_date)
-                    VALUES (?, ?)
-                ''', (habit.name, completion_date.isoformat()))
+            cursor.executemany('''
+                INSERT INTO completions (habit_name, completion_date)
+                VALUES (?, ?)
+            ''', [(habit.name, d.isoformat()) for d in habit.completed_dates])
 
             conn.commit()
 
@@ -67,6 +66,16 @@ class Storage:
             deleted = cursor.rowcount > 0
             conn.commit()
             return deleted
+
+    def _build_habit(self, habit_row):
+        habit = Habit(
+            name=habit_row[0],
+            period=habit_row[1],
+            created_at=datetime.fromisoformat(habit_row[2])
+        )
+        habit.streak = habit_row[3]
+        habit.longest_streak = habit_row[4]
+        return habit
 
     def get_habit(self, habit_name):
         with self.get_connection() as conn:
@@ -82,14 +91,7 @@ class Storage:
             if not habit_row:
                 return None
 
-            # Create habit object
-            habit = Habit(
-                name=habit_row[0],
-                period=habit_row[1],
-                created_at=datetime.fromisoformat(habit_row[2])
-            )
-            habit.streak = habit_row[3]
-            habit.longest_streak = habit_row[4]
+            habit = self._build_habit(habit_row)
 
             # Get completion dates
             cursor.execute('''
@@ -109,11 +111,29 @@ class Storage:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Get all habits
-            cursor.execute('SELECT name FROM habits')
-            habit_names = cursor.fetchall()
+            # One query for all habits, one for all completions (avoids N+1).
+            cursor.execute('''
+                SELECT name, period, created_at, streak, longest_streak
+                FROM habits ORDER BY name
+            ''')
+            habit_rows = cursor.fetchall()
+            if not habit_rows:
+                return []
 
-            return [
-                self.get_habit(name[0])
-                for name in habit_names
-            ]
+            cursor.execute('''
+                SELECT habit_name, completion_date FROM completions
+                ORDER BY completion_date
+            ''')
+            completion_rows = cursor.fetchall()
+
+        dates_by_habit = {}
+        for habit_name, completion_date in completion_rows:
+            dates_by_habit.setdefault(habit_name, []).append(
+                date.fromisoformat(completion_date))
+
+        habits = []
+        for habit_row in habit_rows:
+            habit = self._build_habit(habit_row)
+            habit.completed_dates = dates_by_habit.get(habit_row[0], [])
+            habits.append(habit)
+        return habits

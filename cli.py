@@ -2,7 +2,7 @@ import argparse
 from datetime import datetime, date
 from storage import Storage
 from habit import Habit
-from analytics import get_habit_stats, get_all_habits_stats, get_completion_rate
+from analytics import get_habit_stats, get_completion_rate
 
 
 def parse_date(date_str):

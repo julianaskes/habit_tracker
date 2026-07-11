@@ -28,4 +28,6 @@ def get_completion_rate(habit, days=30):
     )
 
     expected_completions = days if habit.period == "daily" else (days // 7)
-    return (completed_in_period / expected_completions) * 100 if expected_completions > 0 else 0
+    if expected_completions <= 0:
+        return 0.0
+    return (completed_in_period / expected_completions) * 100
