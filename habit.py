@@ -16,6 +16,15 @@ class Habit:
             self.completed_dates.append(completion_date)
             self._calculate_streak()
 
+    def recalculate_streaks(self):
+        """Recompute current/longest streak from completed_dates as of today.
+
+        The current streak lapses over time, so a value persisted while a
+        habit was active can be stale when re-read on a later day. Callers
+        that load a habit from storage should invoke this to refresh it.
+        """
+        self._calculate_streak()
+
     def _calculate_streak(self):
         if not self.completed_dates:
             self.streak = 0

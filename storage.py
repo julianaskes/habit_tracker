@@ -105,6 +105,9 @@ class Storage:
                 for row in cursor.fetchall()
             ]
 
+            # The persisted current streak may have lapsed since it was
+            # written; refresh it so reads always reflect today.
+            habit.recalculate_streaks()
             return habit
 
     def get_all_habits(self):
@@ -135,5 +138,6 @@ class Storage:
         for habit_row in habit_rows:
             habit = self._build_habit(habit_row)
             habit.completed_dates = dates_by_habit.get(habit_row[0], [])
+            habit.recalculate_streaks()
             habits.append(habit)
         return habits

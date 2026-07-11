@@ -138,6 +138,24 @@ class TestHabitTracker(unittest.TestCase):
         self.assertEqual(habit.streak, 0)
         self.assertEqual(habit.longest_streak, 2)
 
+    def test_read_recomputes_stale_streak(self):
+        # A habit saved with an active streak whose completions are now all
+        # in the past should read back with a current streak of 0.
+        habit = Habit("Exercise", "daily")
+        today = date.today()
+        for i in range(5, 8):  # 3-day run, a week ago
+            habit.complete(today - timedelta(days=i))
+        habit.streak = 3  # simulate a value persisted while the run was active
+        self.storage.add_habit(habit)
+
+        saved = self.storage.get_habit("Exercise")
+        self.assertEqual(saved.streak, 0)
+        self.assertEqual(saved.longest_streak, 3)
+
+        listed = self.storage.get_all_habits()[0]
+        self.assertEqual(listed.streak, 0)
+        self.assertEqual(listed.longest_streak, 3)
+
     def test_daily_completion_rate_capped_at_100(self):
         # 31 completions fit the inclusive 30-day window; rate must not exceed 100%.
         habit = Habit("Exercise", "daily")
