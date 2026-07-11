@@ -1,19 +1,31 @@
+"""SQLite-backed persistence for Habit objects."""
+
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime
 from habit import Habit
 
 
 class Storage:
+    """Owns the SQLite connection, schema, and Habit read/write operations."""
+
     def __init__(self, db_file="habits.db"):
+        """Open (creating if needed) the habits database.
+
+        Args:
+            db_file: Path to the SQLite file, or ":memory:" for an
+                in-memory database (used by tests).
+        """
         self.db_file = db_file
         self.conn = sqlite3.connect(self.db_file)
         self.conn.execute('PRAGMA foreign_keys = ON')
         self.init_db()
 
     def get_connection(self):
+        """Return the underlying sqlite3 connection."""
         return self.conn
 
     def init_db(self):
+        """Create the habits/completions tables if they don't exist yet."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
@@ -41,6 +53,12 @@ class Storage:
             conn.commit()
 
     def add_habit(self, habit):
+        """Persist a habit, fully replacing its stored row and completions.
+
+        Args:
+            habit: The Habit to save. Its entire completed_dates list
+                replaces whatever was previously stored for this name.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -60,6 +78,14 @@ class Storage:
             conn.commit()
 
     def remove_habit(self, habit_name):
+        """Delete a habit (and its completions, via cascade).
+
+        Args:
+            habit_name: Name of the habit to remove.
+
+        Returns:
+            bool: True if a habit was deleted, False if none matched.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM habits WHERE name = ?', (habit_name,))
@@ -68,6 +94,14 @@ class Storage:
             return deleted
 
     def _build_habit(self, habit_row):
+        """Construct a Habit from a `habits` table row (no completions yet).
+
+        Args:
+            habit_row: (name, period, created_at, streak, longest_streak).
+
+        Returns:
+            Habit: with completed_dates left empty for the caller to fill in.
+        """
         habit = Habit(
             name=habit_row[0],
             period=habit_row[1],
@@ -78,6 +112,15 @@ class Storage:
         return habit
 
     def get_habit(self, habit_name):
+        """Load a single habit with its full completion history.
+
+        Args:
+            habit_name: Name of the habit to load.
+
+        Returns:
+            Habit or None: The habit (streaks recalculated as of today), or
+            None if no habit with that name exists.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
@@ -101,7 +144,7 @@ class Storage:
             ''', (habit_name,))
 
             habit.completed_dates = [
-                date.fromisoformat(row[0])
+                datetime.fromisoformat(row[0])
                 for row in cursor.fetchall()
             ]
 
@@ -111,6 +154,15 @@ class Storage:
             return habit
 
     def get_all_habits(self):
+        """Load every habit with its full completion history.
+
+        Batches the completions into a single query (rather than one query
+        per habit) to avoid an N+1 read pattern.
+
+        Returns:
+            list[Habit]: All habits, ordered by name, streaks recalculated
+            as of today.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
@@ -132,7 +184,7 @@ class Storage:
         dates_by_habit = {}
         for habit_name, completion_date in completion_rows:
             dates_by_habit.setdefault(habit_name, []).append(
-                date.fromisoformat(completion_date))
+                datetime.fromisoformat(completion_date))
 
         habits = []
         for habit_row in habit_rows:

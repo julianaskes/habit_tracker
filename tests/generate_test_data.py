@@ -1,49 +1,39 @@
-from datetime import datetime, timedelta
+"""Standalone script: generate the predefined demo habits into a throwaway
+test_habits.db (via seed_data.generate_seed_habits) for manual inspection,
+without touching the user's real habits.db. See cli.py's `load-demo`
+command for loading the same predefined habits into the real database.
+"""
+
+import os
+import sys
+
+# Allow running this script directly (`python tests/generate_test_data.py`)
+# by putting the repo root -- where storage.py/habit.py/seed_data.py live --
+# on sys.path, since Python only auto-adds the script's own directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from storage import Storage
-from habit import Habit
-import random
+from seed_data import generate_seed_habits
 
 
 def generate_test_data():
-    """Generate 4 weeks of test data for various habits"""
+    """Generate 4 weeks of predefined habit data into test_habits.db.
+
+    Returns:
+        Storage: the Storage instance the habits were written to.
+    """
     storage = Storage("test_habits.db")
-
-    # Create habits
-    habits = [
-        ("Morning Meditation", "daily", 0.9),  # 90% completion rate
-        ("Exercise", "daily", 0.7),            # 70% completion rate
-        ("Read Book", "daily", 0.8),           # 80% completion rate
-        ("Weekly Review", "weekly", 0.75),      # 75% completion rate
-        ("Deep House Cleaning", "weekly", 1.0)  # 100% completion rate
-    ]
-
-    today = datetime.now().date()
-    four_weeks_ago = today - timedelta(days=28)
-
-    for habit_name, period, completion_rate in habits:
-        habit = Habit(habit_name, period)
-
-        # Generate completion dates
-        current_date = four_weeks_ago
-        while current_date <= today:
-            # For weekly habits, only consider once per week
-            if period == "weekly" and current_date.weekday() != 0:
-                current_date += timedelta(days=1)
-                continue
-
-            # Randomly complete based on completion rate
-            if random.random() < completion_rate:
-                habit.complete(current_date)
-
-            current_date += timedelta(days=1)
-
+    for habit in generate_seed_habits():
         storage.add_habit(habit)
-
     return storage
 
 
 def print_test_data_summary(storage):
-    """Print a summary of the generated test data"""
+    """Print a summary of the generated test data.
+
+    Args:
+        storage: Storage instance to read habits from.
+    """
     print("\nTest Data Summary:")
     print("-" * 50)
 
@@ -62,16 +52,10 @@ def print_test_data_summary(storage):
         print(f"Current Streak: {stats['current_streak']}")
         print(f"Longest Streak: {stats['longest_streak']}")
         print(
-            f"Completion Dates: {[d.strftime('%Y-%m-%d') for d in sorted(habit.completed_dates)]}")
+            f"Completion Dates: {[d.strftime('%Y-%m-%d %H:%M') for d in sorted(habit.completed_dates)]}")
         print("-" * 30)
 
 
 if __name__ == "__main__":
-    # Set random seed for reproducible results
-    random.seed(42)
-
-    # Generate test data
     storage = generate_test_data()
-
-    # Print summary
     print_test_data_summary(storage)
