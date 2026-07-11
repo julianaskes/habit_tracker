@@ -17,6 +17,10 @@ class HabitTrackerCLI:
         self.storage = Storage()
 
     def add_habit(self, name, period="daily"):
+        if not name or not name.strip():
+            print("Error: Habit name cannot be empty")
+            return
+
         if period not in ["daily", "weekly"]:
             print("Error: Period must be 'daily' or 'weekly'")
             return
@@ -38,6 +42,10 @@ class HabitTrackerCLI:
         completion_date = parse_date(date_str) if date_str else date.today()
         if not completion_date:
             print("Error: Invalid date format. Use YYYY-MM-DD")
+            return
+
+        if completion_date > date.today():
+            print("Error: Completion date cannot be in the future")
             return
 
         habit.complete(completion_date)
