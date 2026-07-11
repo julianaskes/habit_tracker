@@ -21,6 +21,10 @@ class HabitTrackerCLI:
             print("Error: Period must be 'daily' or 'weekly'")
             return
 
+        if self.storage.get_habit(name):
+            print(f"Error: Habit '{name}' already exists")
+            return
+
         habit = Habit(name, period)
         self.storage.add_habit(habit)
         print(f"Habit '{name}' added successfully!")
